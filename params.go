@@ -439,3 +439,135 @@ func ParseParamsMongo(coll *mgo.Collection, params Params)(*mgo.Query){
 
     return query
 }
+
+func ParseUpdateMongoVer2(updates []UpdatePart) (*primitive.M, *primitive.M) {
+
+	//Vars
+	query, update := primitive.M{}, primitive.M{}
+	// update := make(map[string]interface{})
+	push, pull, set := primitive.M{}, primitive.M{}, primitive.M{}
+	for _, update := range updates {
+
+		//Set
+		if update.Operator == "$set" || update.Operator == "" {
+			set[update.Field] = update.NewValue
+		}
+
+		//Push
+		if update.Operator == "$push" {
+			push[update.Field] = update.NewValue
+		}
+
+		//Pull
+		if update.Operator == "$pull" {
+
+			//BSON Query
+			if len(update.PullQuery) > 0 {
+				q := primitive.M{}
+				for _, queryPart := range update.PullQuery {
+					q[queryPart.Field] = bson.M{
+						queryPart.Operator: queryPart.Value,
+					}
+				}
+				pull[update.Field] = q
+			}
+
+		}
+
+	}
+
+	//Update
+	if len(set) > 0 {
+		update["$set"] = set
+	}
+	if len(push) > 0 {
+		update["$push"] = push
+	}
+	if len(pull) > 0 {
+		update["$pull"] = pull
+	}
+
+	return &query, &update
+}
+
+func ParseParamsMongoVer2(params Params) *primitive.M {
+
+	//BSON Query
+	q := primitive.M{}
+	// var orQuery []QueryPart
+	andQs := []primitive.M{}
+	// var orQs []map[string]interface{}
+	for _, queryPart := range params.Query {
+
+		// $or
+		if queryPart.Operator == "$or" {
+			orQuery := queryPart.Value.([]QueryPart)
+			orQs := []primitive.M{}
+			for _, orQueryPart := range orQuery {
+
+				if orQueryPart.Operator == "$regex" {
+					orQs = append(orQs, primitive.M{
+						orQueryPart.Field: bson.M{
+							orQueryPart.Operator: bson.RegEx{
+								Pattern: orQueryPart.Value.(string),
+								Options: "i",
+							},
+						},
+					})
+				} else {
+					orQs = append(orQs, primitive.M{
+						orQueryPart.Field: bson.M{
+							orQueryPart.Operator: orQueryPart.Value,
+						},
+					})
+				}
+
+			}
+			andQs = append(andQs, primitive.M{
+				"$or": orQs,
+			})
+		} else {
+			andQs = append(andQs, primitive.M{
+				queryPart.Field: bson.M{
+					queryPart.Operator: queryPart.Value,
+				},
+			})
+			// q[queryPart.Field] = bson.M{
+			//     queryPart.Operator : queryPart.Value,
+			// }
+		}
+
+	}
+
+	// $or
+	// if len(orQuery) > 0 {
+	// 	for _, orQueryPart := range orQuery {
+
+	// 		if orQueryPart.Operator == "$regex" {
+	// 			orQs = append(orQs, map[string]interface{}{
+	// 				orQueryPart.Field: bson.M{
+	// 					orQueryPart.Operator: bson.RegEx{
+	// 						Pattern: orQueryPart.Value.(string),
+	// 						Options: "i",
+	// 					},
+	// 				},
+	// 			})
+	// 		} else {
+	// 			orQs = append(orQs, map[string]interface{}{
+	// 				orQueryPart.Field: bson.M{
+	// 					orQueryPart.Operator: orQueryPart.Value,
+	// 				},
+	// 			})
+	// 		}
+
+	// 	}
+	// 	andQs = append(andQs, map[string]interface{}{
+	// 		"$or": orQs,
+	// 	})
+	// }
+	if len(andQs) > 0 {
+		q["$and"] = andQs
+	}
+
+	return &q
+}
