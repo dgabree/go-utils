@@ -621,7 +621,7 @@ func ParseUpdateMongoVer2(updates []UpdatePart) (*primitive.M, *primitive.M) {
 	return &query, &update
 }
 
-func ParseParamsMongoVer2(params Params) *primitive.M {
+func ParseParamsMongoVer2(params Params) (*primitive.M, *options.FindOptions) {
 
 	//BSON Query
 	q := primitive.M{}
@@ -696,9 +696,39 @@ func ParseParamsMongoVer2(params Params) *primitive.M {
 	// 		"$or": orQs,
 	// 	})
 	// }
-	if len(andQs) > 0 {
+	if len(andQs) > 1 {
 		q["$and"] = andQs
+	} else if len(andQs) == 1 {
+		q = andQs[0]
 	}
 
-	return &q
+	// Initialize the find options
+	findOptions := options.Find()
+
+	// Set fields to include in the response
+	if len(params.Fields) > 0 {
+		projection := bson.M{}
+		for _, field := range params.Fields {
+			projection[field] = 1
+		}
+		findOptions.SetProjection(projection)
+	}
+
+	// Set sort order
+	if params.Sort != "" {
+		findOptions.SetSort(bson.M{params.Sort: 1})
+	}
+
+	// Set limit and skip options
+	if params.Limit != 0 {
+		findOptions.SetLimit(int64(params.Limit))
+	}
+
+	if params.Skip != 0 {
+		findOptions.SetSkip(int64(params.Skip))
+	} else if params.Page != 0 && params.Limit != 0 {
+		findOptions.SetSkip(int64(params.Limit * (params.Page - 1)))
+	}
+
+	return &q, findOptions
 }
